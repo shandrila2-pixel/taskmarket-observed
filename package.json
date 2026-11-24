@@ -1,0 +1,16 @@
+{
+  "name": "taskmarket-visualizer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A public, read-only dashboard of Taskmarket's market data. Made for a paid Taskmarket bounty; not an official Taskmarket product.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "fetch": "node scripts/fetch.mjs",
+    "preview": "node scripts/preview.mjs",
+    "deploy": "node scripts/deploy.mjs"
+  }
+}

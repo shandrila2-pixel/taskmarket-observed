@@ -1,0 +1,66 @@
+Taskmarket, observed — operator notes
+=====================================
+
+Live site   https://shandrila2-pixel.github.io/taskmarket-observed/
+Repo        https://github.com/shandrila2-pixel/taskmarket-observed
+Bounty      TSK-BRK611AN (Tempo 4217, 50 OUSD, closes 2026-12-01T18:52Z)
+
+Stack
+-----
+Plain HTML + inline CSS + inline SVG. No framework, no build step, no
+dependencies at all. Node 20 is used only for the two scripts and the hourly
+fetch. Fonts (Instrument Serif, Inter Tight, Departure Mono) and the logo are
+served from the same origin, so the page makes zero third-party requests.
+
+Data
+----
+Every number comes from one server-side snapshot: public/data.json, written by
+scripts/fetch.mjs. The API sends no CORS headers, so the page can never call it
+directly - which is also why the snapshot is the whole data layer.
+
+Endpoints used
+  /api/stats/platform-time-series?range=all&bucket=day|week
+  /api/stats/breakdowns
+  /api/stats/activity-heatmap?range=90d&dimension=hourOfWeek
+  /api/stats/activity-feed?limit=40
+  /api/market/stats?chainId=4217|8453
+  /api/tasks?chainId=4217|8453&limit=100 (+ cursor until hasMore is false)
+
+The four /api/stats/* endpoints ignore chainId. Only /api/market/stats varies
+paidWorkers and activeWallets per chain. Every per-chain figure on the page is
+folded from /api/tasks instead, so it is reproducible by anyone.
+
+Refresh
+-------
+.github/workflows/deploy.yml runs at 7 past every hour: fetch, upload public/
+as the Pages artifact, deploy. Nothing is committed by CI. The page shows the
+snapshot timestamp and per-view titles swap with the hash route.
+
+Deploy
+------
+  GITHUB_TOKEN=... GITHUB_REPO=owner/name npm run deploy
+
+With the web UI: upload the tree, Settings -> Pages -> Source: GitHub Actions,
+then run the workflow once (workflow_dispatch).
+
+Local
+-----
+  npm run fetch
+  npm run preview        # http://localhost:8080
+
+Share cards
+-----------
+public/og/{flow,board,market,crowd,activity}.png are 1200x630 renderings of
+public/share.html, cropped with tools/crop.mjs. Regenerate after a data change
+if the headline numbers moved.
+
+Known limits (also printed in the Methods view)
+-----------------------------------------------
+- Platform series count 1,655 tasks; /api/tasks returns 1,508. The gap is
+  almost all June 2026. The page calls the per-task set a floor and never adds
+  the two together.
+- The heatmap's 0-6 day rows are the API's own index; the site never labels
+  them Monday-Sunday because the mapping is not documented.
+- Expired tasks keep status "open" in the API. They are counted as stale, not
+  as takeable work.
+- Entry worth is reward / submissionCount per task, not what a worker was paid.
