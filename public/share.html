@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>share card</title>
+<style>
+  @font-face{font-family:"Instrument Serif";src:url("./fonts/InstrumentSerif-Regular.ttf") format("truetype");font-weight:400;font-style:normal}
+  @font-face{font-family:"Instrument Serif";src:url("./fonts/InstrumentSerif-Italic.ttf") format("truetype");font-weight:400;font-style:italic}
+  @font-face{font-family:"Inter Tight";src:url("./fonts/InterTight-Variable.ttf") format("truetype");font-weight:100 900}
+  @font-face{font-family:"Departure Mono";src:url("./fonts/DepartureMono-Regular.woff2") format("woff2")}
+  :root{--ground:#12100E;--panel:#221E1A;--line:#453E37;--cream:#EFE9E2;--muted:#B0A79D;--magenta:#E74079}
+  *{box-sizing:border-box;margin:0}
+  html,body{background:#000}
+  html.crop,html.crop body{width:960px;height:504px;overflow:hidden}
+  html.crop #card{transform:scale(.8);transform-origin:0 0}
+  #card{
+    width:1200px;height:630px;position:relative;overflow:hidden;background:var(--ground);color:var(--cream);
+    font-family:"Inter Tight",sans-serif;font-variant-numeric:tabular-nums;
+    padding:52px 60px 48px;display:flex;flex-direction:column;
+  }
+  #card::before{content:"";position:absolute;inset:-160px -80px auto auto;width:820px;height:520px;
+    background:radial-gradient(closest-side,rgba(58,20,32,.95),rgba(58,20,32,0));pointer-events:none}
+  .top{display:flex;justify-content:space-between;align-items:center;position:relative}
+  .top img{height:30px;width:auto;display:block}
+  .top .site{font-family:"Departure Mono",monospace;font-size:15px;color:var(--muted);letter-spacing:.02em}
+  .mid{margin-top:auto;position:relative}
+  .eyebrow{font-family:"Departure Mono",monospace;font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--magenta)}
+  h1{font-family:"Instrument Serif",serif;font-weight:400;font-size:78px;line-height:1.0;letter-spacing:-.02em;margin:14px 0 0;max-width:15ch}
+  h1 em{font-style:italic;color:var(--magenta)}
+  .num{font-family:"Departure Mono",monospace;font-size:34px;color:var(--cream);margin-top:26px;letter-spacing:-.01em}
+  .num small{display:block;font-size:13px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-top:8px}
+  .bot{margin-top:auto;display:flex;justify-content:space-between;align-items:flex-end;border-top:1px solid var(--line);padding-top:16px;position:relative}
+  .bot div{font-family:"Departure Mono",monospace;font-size:12.5px;color:var(--muted);line-height:1.6}
+  .bot b{font-weight:400;color:var(--cream)}
+</style>
+</head>
+<body>
+<div id="card">
+  <div class="top">
+    <img src="./lockup.png" alt="Taskmarket">
+    <span class="site">taskmarket.dev</span>
+  </div>
+  <div class="mid">
+    <div class="eyebrow" id="view"></div>
+    <h1 id="head"></h1>
+    <div class="num"><span id="big"></span><small id="biglabel"></small></div>
+  </div>
+  <div class="bot">
+    <div>A read-only read of the market.<br>Updated hourly from the public API.</div>
+    <div id="stamp" style="text-align:right"></div>
+  </div>
+</div>
+<script type="module">
+const D = await (await fetch('./data.json')).json()
+const T = D.totals
+const TEMPO = D.chains.find(c => c.id === 4217)
+const BASE = D.chains.find(c => c.id === 8453)
+const usd = (v) => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const n0 = (v) => Math.round(v).toLocaleString('en-US')
+const live = D.chains.reduce((a, c) => a + c.openCount, 0)
+const dead = D.chains.reduce((a, c) => a + c.staleOpen, 0)
+const posted30 = D.platform.timeSeries.day.slice(-30).reduce((a, r) => a + r.tasksCreated, 0)
+const allPosted = D.platform.timeSeries.day.reduce((a, r) => a + r.tasksCreated, 0)
+const heat = D.platform.heatmap.cells.reduce((a, c) => Math.max(a, c.count), 0)
+
+const CARDS = {
+  flow: { view: 'Where the money went', head: 'Where the money <em>went</em>.', big: usd(T.posted) + ' posted', label: usd(T.paid) + ' paid out · ' + usd(T.returned) + ' returned · ' + usd(T.held) + ' held' },
+  board: { view: 'The open board', head: 'Half the board says <em>open</em>.', big: n0(dead) + ' of ' + n0(live + dead) + ' expired', label: 'still listed as open · ' + usd(D.chains.reduce((a, c) => a + c.staleVolume, 0)) + ' nobody can enter' },
+  market: { view: 'The market over time', head: 'Most of the market happened <em>this month</em>.', big: n0(posted30) + ' tasks in 30 days', label: (Math.round((posted30 / allPosted) * 1000) / 10) + '% of every task the platform has recorded' },
+  crowd: { view: 'The crowd', head: 'One entry is worth <em>' + usd(TEMPO.derived.worth.median) + '</em>.', big: usd(TEMPO.derived.worth.median) + ' median entry', label: 'reward divided by entries · ' + n0(TEMPO.derived.entries.median) + ' entries on the median task · Tempo' },
+  activity: { view: 'When the market is awake', head: 'The week has a <em>shape</em>.', big: n0(heat) + ' events in one hour', label: 'busiest hour of the week, last 90 days' },
+}
+const v = new URLSearchParams(location.search).get('v') || 'flow'
+const c = CARDS[v] || CARDS.flow
+if (new URLSearchParams(location.search).get('crop') === '1') document.documentElement.classList.add('crop')
+document.getElementById('view').textContent = c.view
+document.getElementById('head').innerHTML = c.head
+document.getElementById('big').textContent = c.big
+document.getElementById('biglabel').textContent = c.label
+document.getElementById('stamp').innerHTML = 'Data as of <b>' + new Date(D.generatedAt).toISOString().slice(0, 16).replace('T', ' ') + ' UTC</b><br>' + n0(T.tasksFetched) + ' tasks · ' + n0(T.posters) + ' posters'
+</script>
+</body>
+</html>

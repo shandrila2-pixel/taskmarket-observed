@@ -1,0 +1,942 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Taskmarket, observed — a live read of the market</title>
+<meta name="description" content="A read-only dashboard of Taskmarket's public market data: where the money went, what the board really shows, and how crowded each task is. Made for a paid Taskmarket bounty.">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="./mark.png">
+<link rel="preload" href="./fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<meta property="og:type" content="website">
+<meta property="og:title" content="Taskmarket, observed">
+<meta property="og:description" content="Where the money went, what the board really shows, and how crowded each task is.">
+<meta property="og:image" content="https://shandrila2-pixel.github.io/taskmarket-observed/og/flow.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  @font-face{font-family:"Instrument Serif";src:url("./fonts/InstrumentSerif-Regular.ttf") format("truetype");font-weight:400;font-style:normal;font-display:swap}
+  @font-face{font-family:"Instrument Serif";src:url("./fonts/InstrumentSerif-Italic.ttf") format("truetype");font-weight:400;font-style:italic;font-display:swap}
+  @font-face{font-family:"Inter Tight";src:url("./fonts/InterTight-Variable.ttf") format("truetype");font-weight:100 900;font-style:normal;font-display:swap}
+  @font-face{font-family:"Departure Mono";src:url("./fonts/DepartureMono-Regular.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
+
+  :root{
+    --ground:#12100E; --maroon:#3A1420; --panel:#221E1A; --line:#453E37;
+    --cream:#EFE9E2; --paper:#FFF6E8; --muted:#B0A79D; --magenta:#E74079;
+    --salmon:#D9A097; --dim:#6A5F55;
+    --serif:"Instrument Serif",Georgia,serif;
+    --sans:"Inter Tight",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --mono:"Departure Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --pad:clamp(18px,4vw,40px);
+  }
+  *{box-sizing:border-box}
+  html{background:var(--ground)}
+  body{
+    margin:0; background:var(--ground); color:var(--cream);
+    font-family:var(--sans); font-weight:500; font-size:16px; line-height:1.5;
+    -webkit-font-smoothing:antialiased; font-variant-numeric:tabular-nums;
+    background-image:radial-gradient(1100px 520px at 88% -12%, rgba(58,20,32,.85), transparent 65%);
+    background-repeat:no-repeat;
+  }
+  a{color:var(--cream);text-decoration-color:var(--line);text-underline-offset:3px}
+  a:hover{text-decoration-color:var(--magenta)}
+  .skip{position:absolute;left:-9999px}
+  .skip:focus{left:8px;top:8px;background:var(--panel);padding:8px 12px;z-index:99;border:1px solid var(--line)}
+
+  /* ---------- header ---------- */
+  header{
+    position:sticky;top:0;z-index:20;
+    background:rgba(18,16,14,.92); backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);
+  }
+  .bar{max-width:1120px;margin:0 auto;padding:0 var(--pad);display:flex;align-items:center;gap:18px;height:60px}
+  .brand{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:12.5px;letter-spacing:.02em;color:var(--cream);text-decoration:none;white-space:nowrap}
+  .brand img{width:auto;height:20px;display:block}
+  .brand b{font-weight:400}
+  .brand span{color:var(--muted)}
+  nav{display:flex;gap:2px;margin-left:auto;overflow-x:auto;scrollbar-width:none}
+  nav::-webkit-scrollbar{display:none}
+  nav a{
+    font-family:var(--mono);font-size:11.5px;letter-spacing:.02em;text-decoration:none;
+    color:var(--muted);padding:6px 9px;border-radius:2px;white-space:nowrap;border:1px solid transparent
+  }
+  nav a:hover{color:var(--cream)}
+  nav a[aria-current]{color:var(--cream);border-color:var(--line);background:var(--panel)}
+  .asof{
+    font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap;
+    display:flex;align-items:center;gap:7px;padding-left:6px;border-left:1px solid var(--line)
+  }
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--magenta);box-shadow:0 0 0 3px rgba(231,64,121,.15)}
+  @media (max-width:820px){
+    .bar{height:auto;padding:10px var(--pad);flex-wrap:wrap;gap:8px 14px}
+    nav{margin-left:0;order:3;width:100%;justify-content:flex-start}
+    .asof{order:2;border-left:0;padding-left:0;margin-left:auto;font-size:11px}
+  }
+
+  /* ---------- layout ---------- */
+  main{max-width:1120px;margin:0 auto;padding:clamp(28px,5vw,56px) var(--pad) 40px}
+  section[data-view]{animation:rise .28s ease both}
+  section[data-view][hidden]{display:none}
+  @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 14px}
+  h1{
+    font-family:var(--serif);font-weight:400;font-size:clamp(38px,6.4vw,72px);line-height:1.02;
+    letter-spacing:-.015em;margin:0 0 18px;max-width:20ch
+  }
+  h1 em{font-style:italic;color:var(--magenta)}
+  .lede{font-size:clamp(16px,2vw,19px);line-height:1.55;color:var(--cream);max-width:62ch;margin:0 0 8px}
+  .lede strong{font-weight:600}
+  .sub{color:var(--muted);font-size:14.5px;max-width:66ch;margin:10px 0 0}
+  h2{
+    font-family:var(--serif);font-weight:400;font-size:clamp(24px,3.4vw,32px);line-height:1.15;
+    margin:0 0 6px;letter-spacing:-.01em
+  }
+  h3{font-family:var(--sans);font-weight:600;font-size:14px;letter-spacing:.01em;margin:0 0 10px;color:var(--cream)}
+  .block{margin-top:clamp(38px,5vw,60px);padding-top:26px;border-top:1px solid var(--line)}
+  .block-head{display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+  .hint{font-family:var(--mono);font-size:11.5px;color:var(--muted);letter-spacing:.02em;margin:0;max-width:52ch;line-height:1.55}
+  #flow-coverage{max-width:86ch}
+  .unit{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.06em;text-transform:uppercase}
+
+  /* ---------- flow ---------- */
+  .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);margin:26px 0 0}
+  .stat{background:var(--panel);padding:16px 16px 14px}
+  .stat .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:7px}
+  .stat .v{font-family:var(--serif);font-size:clamp(24px,3vw,30px);line-height:1;letter-spacing:-.01em;display:block}
+  .stat .n{font-family:var(--mono);font-size:11px;color:var(--dim);display:block;margin-top:6px}
+
+  .flowbar{display:flex;height:66px;border:1px solid var(--line);overflow:hidden;margin-top:22px}
+  .seg{position:relative;display:flex;align-items:center;justify-content:flex-start;padding:0 10px;min-width:2px}
+  .seg b{font-family:var(--mono);font-size:12px;letter-spacing:.02em;font-weight:400}
+  .seg.paid{background:var(--cream);color:#12100E}
+  .seg.held{background:var(--magenta);color:#1a0610}
+  .seg.ret{background:#4A4138;color:var(--cream)}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:12px;font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  .legend i{display:inline-block;width:9px;height:9px;margin-right:7px;vertical-align:baseline}
+  .legend b{color:var(--cream);font-weight:400}
+  .chainbar{display:grid;grid-template-columns:88px 1fr;gap:14px;align-items:center;margin-top:16px}
+  .chainbar .lbl{font-family:var(--mono);font-size:12px;color:var(--cream);display:flex;flex-direction:column;gap:2px}
+  .chainbar .lbl span{color:var(--muted);font-size:10.5px}
+  .chainbar .flowbar{height:34px;margin:0}
+  .chainbar .seg{padding:0 8px}
+  .chainbar .seg b{font-size:11px}
+  .chainbar .seg.hide b{display:none}
+
+  /* ---------- board ---------- */
+  .board{display:grid;grid-template-columns:repeat(auto-fill,minmax(17px,1fr));gap:4px;margin:14px 0 0}
+  .cell{aspect-ratio:1;border-radius:2px}
+  .cell.live{background:var(--cream)}
+  .cell.dead{background:#2A2521}
+  .cell:hover{outline:1px solid var(--magenta);outline-offset:2px}
+  .board-wrap{display:grid;gap:26px}
+  .board-foot{display:flex;gap:24px;flex-wrap:wrap;font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:14px}
+
+  /* ---------- tables / bars ---------- */
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{
+    font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted);font-weight:400;text-align:left;padding:0 10px 8px 0;border-bottom:1px solid var(--line)
+  }
+  td{padding:9px 10px 9px 0;border-bottom:1px solid #2A2521;vertical-align:top}
+  td.num,th.num{text-align:right;font-family:var(--mono);font-size:12.5px;padding-right:0;padding-left:20px;white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  .ref{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  .ttl{color:var(--cream);display:block;margin-top:2px;font-size:13.5px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  table{width:100%;table-layout:fixed}
+  table col.c-num{width:104px}
+  th.num:not(:last-child),td.num:not(:last-child){padding-right:0}
+
+  .hbar{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;margin-bottom:7px}
+  .hbar .track{height:9px;background:#2A2521;position:relative;overflow:hidden;border-radius:1px}
+  .hbar .fill{position:absolute;inset:0 auto 0 0;background:var(--cream)}
+  .hbar .fill.m{background:var(--magenta)}
+  .hbar .addr{font-family:var(--mono);font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+  .hbar .val{font-family:var(--mono);font-size:11.5px;color:var(--cream)}
+
+  .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:clamp(20px,3vw,38px)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;background:var(--line);border:1px solid var(--line)}
+  .card{background:var(--panel);padding:14px}
+  .card .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:block}
+  .card .v{font-family:var(--serif);font-size:26px;line-height:1.1;display:block;margin-top:4px}
+
+  /* ---------- charts ---------- */
+  svg{display:block;width:100%;height:auto;overflow:visible}
+  .chart{border:1px solid var(--line);background:var(--panel);padding:14px 16px 10px}
+  .chart-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px}
+  .chart-h b{font-family:var(--sans);font-weight:600;font-size:13px}
+  .chart-h span{font-family:var(--mono);font-size:11.5px;color:var(--cream)}
+  .chart-h span small{color:var(--muted)}
+  .chart-f{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:4px}
+  .grid2{display:grid;grid-template-columns:1fr;gap:14px}
+  @media (min-width:760px){.grid2{grid-template-columns:repeat(2,1fr)}}
+
+  .segctl{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .segctl button{
+    font-family:var(--mono);font-size:11.5px;color:var(--muted);background:transparent;
+    border:1px solid var(--line);padding:6px 10px;cursor:pointer;border-radius:2px
+  }
+  .segctl button:hover{color:var(--cream);border-color:#6A5F55}
+  .segctl button[aria-pressed="true"]{background:var(--cream);color:#12100E;border-color:var(--cream)}
+  .segctl .sp{width:14px}
+  .segctl .unit{align-self:center;margin-right:4px}
+
+  /* ---------- heatmap ---------- */
+  .heat{display:grid;grid-template-columns:24px repeat(24,1fr);gap:3px;min-width:520px}
+  .heat .rl{font-family:var(--mono);font-size:10px;color:var(--dim);display:flex;align-items:center}
+  .heat .cl{font-family:var(--mono);font-size:9.5px;color:var(--dim);text-align:center;line-height:1}
+  .heat .hc{aspect-ratio:1;border-radius:1px;background:#2A2521}
+  .heat-scroll{overflow-x:auto;padding-bottom:6px}
+
+  /* ---------- feed ---------- */
+  .feed{list-style:none;margin:0;padding:0}
+  .feed li{display:grid;grid-template-columns:88px 1fr 58px auto;gap:12px;align-items:baseline;padding:9px 0;border-bottom:1px solid #2A2521;font-size:13.5px}
+  .feed li:last-child{border-bottom:0}
+  .feed .t{font-family:var(--mono);font-size:10.5px;color:var(--magenta);letter-spacing:.04em;text-transform:uppercase}
+  .feed .w{color:var(--cream);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .feed .ch{font-family:var(--mono);font-size:10.5px;color:var(--muted);text-align:right}
+  .feed .when{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;text-align:right}
+  @media (max-width:560px){.feed li{grid-template-columns:64px 1fr 50px;gap:8px}.feed .when{display:none}}
+
+  /* ---------- notes ---------- */
+  .note{background:var(--panel);border:1px solid var(--line);border-left:2px solid var(--magenta);padding:14px 16px;font-size:13.5px;color:var(--muted);line-height:1.55;margin-top:20px;max-width:78ch}
+  .note b{color:var(--cream);font-weight:600}
+  dl.methods{display:grid;grid-template-columns:340px 1fr;gap:1px;background:var(--line);border:1px solid var(--line);margin:16px 0 0}
+  dl.methods dt,dl.methods dd{background:var(--panel);margin:0;padding:11px 13px;font-size:12.5px}
+  dl.methods dt{font-family:var(--mono);font-size:10.5px;line-height:1.5;color:var(--muted);word-break:break-word}
+  dl.methods dd{color:var(--cream);line-height:1.45}
+  @media (max-width:900px){dl.methods{grid-template-columns:250px 1fr}}
+  @media (max-width:600px){dl.methods{grid-template-columns:1fr}dl.methods dt{padding-bottom:2px}dl.methods dd{padding-top:2px}}
+  .rules{display:grid;grid-template-columns:1fr;gap:10px}
+  .rules .note{margin-top:0;max-width:none}
+  @media (min-width:820px){.rules{grid-template-columns:1fr 1fr;align-items:start}}
+
+  footer{max-width:1120px;margin:0 auto;padding:34px var(--pad) 56px;border-top:1px solid var(--line);display:flex;gap:18px;justify-content:space-between;flex-wrap:wrap;font-family:var(--mono);font-size:11.5px;color:var(--muted);line-height:1.7}
+  footer a{color:var(--cream)}
+  footer .r{text-align:right}
+  @media (max-width:600px){footer .r{text-align:left}}
+  .share{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px;font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  .share button{font-family:var(--mono);font-size:11.5px;background:transparent;color:var(--cream);border:1px solid var(--line);padding:6px 10px;cursor:pointer;border-radius:2px}
+  .share button:hover{border-color:var(--magenta)}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header>
+  <div class="bar">
+    <a class="brand" href="#flow" aria-label="Taskmarket, observed — back to the flow view">
+      <img class="lockup" src="./lockup.png" alt="Taskmarket">
+      <span>.observed</span>
+    </a>
+    <div class="asof"><i class="dot"></i><span id="asof">loading…</span></div>
+    <nav aria-label="Views">
+      <a href="#flow" data-tab="flow">Flow</a>
+      <a href="#board" data-tab="board">Board</a>
+      <a href="#market" data-tab="market">Market</a>
+      <a href="#crowd" data-tab="crowd">Crowd</a>
+      <a href="#activity" data-tab="activity">Activity</a>
+      <a href="#methods" data-tab="methods">Methods</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <noscript><p class="lede">This dashboard draws its charts in the browser from a single JSON file. Enable JavaScript to see them; the data is at <a href="./data.json">data.json</a>.</p></noscript>
+
+  <!-- ============ FLOW ============ -->
+  <section data-view="flow" hidden>
+    <p class="eyebrow">Taskmarket, observed</p>
+    <h1>Where the money <em>went</em>.</h1>
+    <p class="lede" id="flow-lede"></p>
+    <div id="flow-bars"></div>
+    <div class="strip" id="flow-stats"></div>
+    <p class="hint" id="flow-coverage" style="margin-top:12px"></p>
+
+    <div class="block">
+      <div class="block-head">
+        <div>
+          <h2>Two markets, one ledger</h2>
+          <p class="hint">Same three outcomes, per chain. Tempo pays out more of what it posts; Base sends a third of its value back.</p>
+        </div>
+      </div>
+      <div id="flow-chains"></div>
+    </div>
+
+    <div class="block">
+      <div class="block-head">
+        <div>
+          <h2>The same numbers, as a table</h2>
+          <p class="hint">Everything above, per chain, reconciled to the reward column of <span class="ref">/api/tasks</span>.</p>
+        </div>
+      </div>
+      <div id="flow-table"></div>
+    </div>
+
+    <div class="share"><span>Share this view</span><button data-copy>Copy link</button><a data-card href="./og/flow.png" download>Share card (1200 × 630)</a></div>
+  </section>
+
+  <!-- ============ BOARD ============ -->
+  <section data-view="board" hidden>
+    <p class="eyebrow">The open board</p>
+    <h1>One square per task that says <em>open</em>.</h1>
+    <p class="lede" id="board-lede"></p>
+    <div id="board-grids"></div>
+    <div class="strip" id="board-stats"></div>
+
+    <div class="block">
+      <div class="block-head">
+        <div>
+          <h2>What is still worth entering</h2>
+          <p class="hint">The busiest live tasks, by entries. Reward is the full posted amount; entries are submissions the API has counted.</p>
+        </div>
+      </div>
+      <div id="board-tables"></div>
+    </div>
+
+    <p class="note" id="board-note"></p>
+    <div class="share"><span>Share this view</span><button data-copy>Copy link</button><a data-card href="./og/flow.png" download>Share card (1200 × 630)</a></div>
+  </section>
+
+  <!-- ============ MARKET ============ -->
+  <section data-view="market" hidden>
+    <p class="eyebrow">The market over time</p>
+    <h1>Most of the market happened <em>this month</em>.</h1>
+    <p class="lede" id="market-lede"></p>
+
+    <div class="segctl" id="range-ctl" role="group" aria-label="Range">
+      <span class="unit">Window</span>
+      <button data-range="7" aria-pressed="false">7d</button>
+      <button data-range="30" aria-pressed="true">30d</button>
+      <button data-range="90" aria-pressed="false">90d</button>
+      <button data-range="all" aria-pressed="false">all</button>
+      <span class="sp"></span>
+      <span class="unit">Bucket</span>
+      <button data-bucket="day" aria-pressed="true">day</button>
+      <button data-bucket="week" aria-pressed="false">week</button>
+    </div>
+    <div class="grid2" id="market-charts"></div>
+    <p class="hint" id="market-note" style="margin-top:12px"></p>
+
+    <div class="block">
+      <div class="block-head">
+        <div>
+          <h2>What gets posted, and what state it ends in</h2>
+          <p class="hint">Platform-wide, from the breakdown endpoint. Counts include tasks the task list no longer returns.</p>
+        </div>
+      </div>
+      <div class="two" id="market-breakdown"></div>
+    </div>
+
+    <div class="block">
+      <div class="block-head">
+        <div>
+          <h2>Distinct posters per week</h2>
+          <p class="hint">Computed from the task list: unique requester addresses that posted at least one task in each week, per chain.</p>
+        </div>
+      </div>
+      <div id="market-posters"></div>
+    </div>
+
+    <div class="share"><span>Share this view</span><button data-copy>Copy link</button><a data-card href="./og/flow.png" download>Share card (1200 × 630)</a></div>
+  </section>
+
+  <!-- ============ CROWD ============ -->
+  <section data-view="crowd" hidden>
+    <p class="eyebrow">The crowd</p>
+    <h1>What one entry is <em>worth</em>.</h1>
+    <p class="lede" id="crowd-lede"></p>
+    <div class="strip" id="crowd-stats"></div>
+
+    <div class="block">
+      <div class="block-head">
+        <div>
+          <h2>How many entries a task draws</h2>
+          <p class="hint">Every task the list returns, bucketed by submission count. Base draws a crowd far more often than Tempo.</p>
+        </div>
+      </div>
+      <div class="two" id="crowd-hist"></div>
+    </div>
+
+    <div class="block">
+      <div class="block-head">
+        <div>
+          <h2>Who posts</h2>
+          <p class="hint">Top eight requester addresses by tasks posted. Addresses only: this page does not guess who is behind them.</p>
+        </div>
+      </div>
+      <div class="two" id="crowd-posters"></div>
+    </div>
+
+    <div class="block">
+      <div class="block-head">
+        <div>
+          <h2>How long a task stays open</h2>
+          <p class="hint">Expiry time minus creation time, over every task the list returns. This is the window a task was given, not the time it waited for a decision.</p>
+        </div>
+      </div>
+      <div class="cards" id="crowd-windows"></div>
+    </div>
+
+    <div class="share"><span>Share this view</span><button data-copy>Copy link</button><a data-card href="./og/flow.png" download>Share card (1200 × 630)</a></div>
+  </section>
+
+  <!-- ============ ACTIVITY ============ -->
+  <section data-view="activity" hidden>
+    <p class="eyebrow">When the market is awake</p>
+    <h1>The week has a <em>shape</em>.</h1>
+    <p class="lede">Counts of market activity by hour of week, platform-wide over the last 90 days, as returned by the heatmap endpoint. Rows are the API's own 0–6 day index; this page does not re-map them to weekday names.</p>
+    <div id="activity-heat"></div>
+
+    <div class="block">
+      <div class="block-head">
+        <div>
+          <h2>Last 40 events</h2>
+          <p class="hint">The live activity feed, as of the snapshot time. Newest first.</p>
+        </div>
+      </div>
+      <div id="activity-feed"></div>
+    </div>
+
+    <div class="share"><span>Share this view</span><button data-copy>Copy link</button><a data-card href="./og/flow.png" download>Share card (1200 × 630)</a></div>
+  </section>
+
+  <!-- ============ METHODS ============ -->
+  <section data-view="methods" hidden>
+    <p class="eyebrow">Methods</p>
+    <h1>Nothing here is <em>guessed</em>.</h1>
+    <p class="lede">Every number on this site is computed from Taskmarket's public API, on a server, once an hour. The page you are reading is a static file that prints one cached snapshot. It never calls the API from your browser.</p>
+
+    <div class="block">
+      <div class="block-head"><div><h2>Endpoints used</h2><p class="hint">Exactly what the snapshot asked for, and what each answer is used for.</p></div></div>
+      <dl class="methods" id="methods-list"></dl>
+    </div>
+
+    <div class="block">
+      <div class="block-head"><div><h2>How a number is made</h2></div></div>
+      <div id="methods-rules" class="rules"></div>
+    </div>
+
+    <div class="block">
+      <div class="block-head"><div><h2>Known limits</h2><p class="hint">Said plainly, so you can discount what deserves it.</p></div></div>
+      <div id="methods-limits" class="rules"></div>
+    </div>
+
+    <div class="block">
+      <div class="block-head"><div><h2>Reproduce it</h2></div></div>
+      <div class="note" style="border-left-color:var(--line)">
+        <p style="margin:0 0 10px">The snapshot is one file: <a href="./data.json">data.json</a>. Fetch it, and every figure on the page is a fold over it.</p>
+        <p style="margin:0 0 10px;font-family:var(--mono);font-size:12px;color:var(--cream)">node scripts/fetch.mjs</p>
+        <p style="margin:0">That runs <span class="ref">scripts/fetch.mjs</span>, which writes the same file and prints the totals it derived. No dependencies, no install step.</p>
+      </div>
+    </div>
+
+    <div class="share"><span>Share this view</span><button data-copy>Copy link</button><a data-card href="./og/flow.png" download>Share card (1200 × 630)</a></div>
+  </section>
+</main>
+
+<footer>
+  <div>
+    Made for a paid Taskmarket bounty. Not an official Taskmarket product.<br>
+    Read-only. No wallet, no login, no analytics.
+  </div>
+  <div class="r">
+    Data as of <span id="asof-foot">—</span><br>
+    <a href="https://taskmarket.dev">taskmarket.dev</a> · MIT
+  </div>
+</footer>
+
+<script type="module">
+/* ------------------------------------------------------------------ utils */
+const $ = (s, r = document) => r.querySelector(s)
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+const n0 = (v) => Math.round(v).toLocaleString('en-US')
+const n2 = (v) => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const usd = (v) => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const usdFine = (v) => (Math.abs(v) < 0.01 ? '$' + v.toFixed(4) : Math.abs(v) < 1 ? '$' + v.toFixed(3) : usd(v))
+const usdShort = (v) => (Math.abs(v) >= 1000 ? '$' + (v / 1000).toFixed(1) + 'k' : '$' + (v < 10 ? v.toFixed(2) : Math.round(v)))
+const pct = (part, whole) => (whole > 0 ? (part / whole) * 100 : 0)
+const pct1 = (x) => (Math.round(x * 10) / 10).toFixed(1) + '%'
+const median = (xs) => { if (!xs.length) return 0; const a = [...xs].sort((x, y) => x - y); const m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2 }
+const shortAddr = (a) => a.slice(0, 6) + '…' + a.slice(-4)
+const dayShort = (iso) => new Date(iso + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+const dayMonth = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+const stampUTC = (iso) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).replace(',', '') + ' UTC'
+
+function ago(iso, now) {
+  const s = Math.max(0, Math.round((now - new Date(iso)) / 1000))
+  if (s < 90) return s + 's ago'
+  const m = Math.round(s / 60)
+  if (m < 90) return m + 'm ago'
+  const h = Math.round(m / 60)
+  if (h < 36) return h + 'h ago'
+  return Math.round(h / 24) + 'd ago'
+}
+
+/* --------------------------------------------------------------- snapshot */
+const DATA = await (await fetch('./data.json')).json()
+const NOW = Date.parse(DATA.generatedAt)
+const T = DATA.totals
+const CH = Object.fromEntries(DATA.chains.map((c) => [c.id, c]))
+const TEMPO = CH[4217], BASE = CH[8453]
+
+/* header clock */
+const stampShort = (iso) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).replace(',', '') + ' UTC'
+$('#asof').textContent = 'as of ' + stampShort(DATA.generatedAt)
+$('#asof').title = stampUTC(DATA.generatedAt)
+$('#asof-foot').textContent = stampUTC(DATA.generatedAt)
+const rel = document.createElement('span')
+rel.style.color = 'var(--dim)'
+rel.textContent = ' · ' + ago(DATA.generatedAt, Date.now())
+$('#asof').after(rel)
+setInterval(() => { rel.textContent = ' · ' + ago(DATA.generatedAt, Date.now()) }, 30000)
+
+/* ------------------------------------------------------------------ chart */
+/** A line-and-area chart from a plain array of numbers. */
+function spark(values, { h = 132, fmt = n0, label = '', colour = 'var(--cream)' } = {}) {
+  const w = 520, padB = 14, padT = 10
+  const max = Math.max(1, ...values)
+  const n = values.length
+  const x = (i) => (n <= 1 ? 0 : (i / (n - 1)) * w)
+  const y = (v) => padT + (1 - v / max) * (h - padT - padB)
+  const pts = values.map((v, i) => [x(i), y(v)])
+  const line = pts.map(([px, py], i) => (i ? 'L' : 'M') + px.toFixed(1) + ' ' + py.toFixed(1)).join(' ')
+  const area = line + ' L' + w + ' ' + (h - padB) + ' L0 ' + (h - padB) + ' Z'
+  const last = pts[pts.length - 1] || [0, h]
+  return `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)}: peak ${fmt(max)}">
+    <path d="${area}" fill="${colour}" opacity=".12"/>
+    <path d="${line}" fill="none" stroke="${colour}" stroke-width="1.8" stroke-linejoin="round"/>
+    <line x1="0" y1="${h - padB}" x2="${w}" y2="${h - padB}" stroke="var(--line)" stroke-width="1"/>
+    <line x1="0" y1="${padT}" x2="${w}" y2="${padT}" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 4" opacity=".5"/>
+    <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3.2" fill="var(--magenta)"/>
+  </svg>`
+}
+
+function chartCard({ title, value, note, values, fmt = n0, colour }) {
+  const peak = Math.max(1, ...values)
+  return `<div class="chart">
+    <div class="chart-h"><b>${esc(title)}</b><span>${esc(value)} <small>${esc(note || '')}</small></span></div>
+    ${spark(values, { fmt, label: title, colour })}
+    <div class="chart-f"><span>peak ${esc(fmt(peak))}</span><span>low ${esc(fmt(Math.min(...values)))}</span></div>
+  </div>`
+}
+
+/* ------------------------------------------------------------- FLOW view */
+{
+  const { paid, returned, held, posted } = T
+  $('#flow-lede').innerHTML =
+    `The task list still returns <strong>${n0(T.tasksFetched)}</strong> tasks across two chains, carrying <strong>${usd(posted)}</strong> in posted rewards. ` +
+    `<strong>${usd(paid)}</strong> has been released to workers, <strong>${usd(returned)}</strong> went back to the poster unclaimed, ` +
+    `and <strong>${usd(held)}</strong> is still sitting in escrow right now.`
+
+  const seg = (cls, label, v, hide) =>
+    `<div class="seg ${cls}${hide ? ' hide' : ''}" style="flex:${v}" title="${esc(label)}: ${usd(v)}"><b>${hide ? '' : pct1(pct(v, posted))}</b></div>`
+
+  $('#flow-bars').innerHTML = `
+    <div class="flowbar" role="img" aria-label="Rewards posted: ${usd(paid)} paid, ${usd(returned)} returned, ${usd(held)} held">
+      ${seg('paid', 'paid out', paid)}
+      ${seg('ret', 'returned', returned)}
+      ${seg('held', 'held in escrow', held)}
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--cream)"></i>paid out <b>${usd(paid)}</b> · ${pct1(pct(paid, posted))} · ${n0(TEMPO.derived.flow.paidCount + BASE.derived.flow.paidCount)} tasks</span>
+      <span><i style="background:#4A4138"></i>returned to poster <b>${usd(returned)}</b> · ${pct1(pct(returned, posted))} · ${n0(TEMPO.derived.flow.returnedCount + BASE.derived.flow.returnedCount)} tasks</span>
+      <span><i style="background:var(--magenta)"></i>still held in escrow <b>${usd(held)}</b> · ${pct1(pct(held, posted))} · ${n0(TEMPO.derived.flow.heldCount + BASE.derived.flow.heldCount)} tasks</span>
+    </div>`
+
+  const stat = (k, v, n) => `<div class="stat"><span class="k">${k}</span><span class="v">${v}</span><span class="n">${n}</span></div>`
+  $('#flow-stats').innerHTML = [
+    stat('Tasks the list returns', n0(T.tasksFetched), n0(TEMPO.taskCount) + ' · ' + n0(BASE.taskCount)),
+    stat('Rewards posted', usd(posted), 'sum of every reward column'),
+    stat('Paid out', usd(paid), n0(TEMPO.derived.flow.paidCount + BASE.derived.flow.paidCount) + ' completed tasks'),
+    stat('Posters', n0(T.posters), 'distinct requester addresses'),
+    stat('Live work now', n0(T.openTasks) + ' tasks', usd(T.openVolume) + ' unclaimed'),
+    stat('Median entry worth', usd(TEMPO.derived.worth.median), 'reward ÷ entries, Tempo'),
+  ].join('')
+
+  /* coverage note: platform series vs the task list */
+  const platformTasks = DATA.platform.timeSeries.week.reduce((a, r) => a + r.tasksCreated, 0)
+  const listTasks = DATA.chains.reduce((a, c) => a + c.derived.weekly.reduce((b, r) => b + r.created, 0), 0)
+  const gap = platformTasks - listTasks
+  const june = DATA.platform.timeSeries.week.filter((r) => r.bucket >= '2026-06-01' && r.bucket < '2026-07-01').reduce((a, r) => a + r.tasksCreated, 0)
+  $('#flow-coverage').innerHTML =
+    `One caveat before you read the rest: the platform's own series counts <b>${n0(platformTasks)}</b> tasks posted all-time, while the list returns <b>${n0(listTasks)}</b>. ` +
+    `The <b>${n0(gap)}</b> it no longer returns are all from ${gap && june ? 'June 2026 (' + n0(june) + ' posted that month, ' + n0(DATA.chains.reduce((a, c) => a + c.derived.weekly.filter((r) => r.week >= '2026-06-01' && r.week < '2026-07-01').reduce((b, r) => b + r.created, 0), 0)) + ' of them still listed)' : 'one month'}. ` +
+    `Every figure here is computed from what the list exposes, so treat it as a floor on the market, not a census. Details in <a href="#methods">Methods</a>.`
+
+  const chainBars = DATA.chains.map((c) => {
+    const f = c.derived.flow
+    const tot = f.paid + f.returned + f.held
+    const s = (cls, v) => `<div class="seg ${cls}${pct(v, tot) < 17 ? ' hide' : ''}" style="flex:${v}"><b>${pct(v, tot) < 17 ? '' : usd(v)}</b></div>`
+    return `<div class="chainbar">
+      <div class="lbl">${c.name}<span>${n0(c.taskCount)} tasks</span></div>
+      <div>
+        <div class="flowbar">${s('paid', f.paid)}${s('ret', f.returned)}${s('held', f.held)}</div>
+        <div class="legend" style="margin-top:8px;font-size:11px">
+          <span><i style="background:var(--cream)"></i>paid ${usd(f.paid)} · ${pct1(pct(f.paid, tot))}</span>
+          <span><i style="background:#4A4138"></i>returned ${usd(f.returned)} · ${pct1(pct(f.returned, tot))}</span>
+          <span><i style="background:var(--magenta)"></i>held ${usd(f.held)} · ${pct1(pct(f.held, tot))}</span>
+        </div>
+      </div>
+    </div>`
+  }).join('')
+  $('#flow-chains').innerHTML = chainBars
+
+  const row = (label, tempo, base, total) =>
+    `<tr><td>${label}</td><td class="num">${tempo}</td><td class="num">${base}</td><td class="num">${total}</td></tr>`
+  const tot = (k) => DATA.chains.reduce((a, c) => a + k(c), 0)
+  $('#flow-table').innerHTML = `<table>
+    <colgroup><col><col class="c-num"><col class="c-num"><col class="c-num"></colgroup>
+    <thead><tr><th>Reward column</th><th class="num">Tempo</th><th class="num">Base</th><th class="num">Both</th></tr></thead>
+    <tbody>
+      ${row('Paid to a worker (completed)', usd(TEMPO.derived.flow.paid), usd(BASE.derived.flow.paid), usd(paid))}
+      ${row('Returned (expired + cancelled)', usd(TEMPO.derived.flow.returned), usd(BASE.derived.flow.returned), usd(returned))}
+      ${row('Held in escrow (open, claimed, pending)', usd(TEMPO.derived.flow.held), usd(BASE.derived.flow.held), usd(held))}
+      <tr><td><b>Posted in total</b></td><td class="num"><b>${usd(TEMPO.derived.flow.paid + TEMPO.derived.flow.returned + TEMPO.derived.flow.held)}</b></td><td class="num"><b>${usd(BASE.derived.flow.paid + BASE.derived.flow.returned + BASE.derived.flow.held)}</b></td><td class="num"><b>${usd(posted)}</b></td></tr>
+      ${row('Tasks counted', n0(TEMPO.taskCount), n0(BASE.taskCount), n0(T.tasksFetched))}
+    </tbody></table>`
+}
+
+/* ------------------------------------------------------------ BOARD view */
+{
+  const all = DATA.chains
+  const live = all.reduce((a, c) => a + c.openCount, 0)
+  const dead = all.reduce((a, c) => a + c.staleOpen, 0)
+  const listed = live + dead
+  const deadVol = all.reduce((a, c) => a + c.staleVolume, 0)
+  const liveVol = all.reduce((a, c) => a + c.openVolume, 0)
+
+  $('#board-lede').innerHTML =
+    `The API reports <strong>${n0(listed)}</strong> tasks at status <span class="ref">open</span>. Only <strong>${n0(live)}</strong> of them have an expiry in the future. ` +
+    `The other <strong>${n0(dead)}</strong> closed weeks or months ago and are still listed as open, holding <strong>${usd(deadVol)}</strong> that nobody can enter.`
+
+  $('#board-grids').innerHTML = all.map((c) => {
+    const cells = c.board.map((t) =>
+      `<i class="cell ${t.live ? 'live' : 'dead'}" title="${esc(t.ref)} · ${usd(t.reward)} · ${n0(t.entries)} entries · ${t.live ? 'open now' : 'expired, still listed'}${t.tap ? ' · TAP verified' : ''}"></i>`
+    ).join('')
+    return `<div>
+      <div class="block-head" style="margin-bottom:6px">
+        <h3 style="margin:0">${c.name} <span class="unit" style="margin-left:6px">${n0(c.board.length)} listed open</span></h3>
+        <p class="hint" style="text-align:right">${n0(c.openCount)} live · ${n0(c.staleOpen)} expired</p>
+      </div>
+      <div class="board">${cells}</div>
+      <div class="board-foot"><span>live ${usd(c.openVolume)}</span><span>stranded ${usd(c.staleVolume)}</span></div>
+    </div>`
+  }).join('') + `<div class="legend" style="margin-top:4px">
+      <span><i style="background:var(--cream)"></i>open now, expiry still ahead</span>
+      <span><i style="background:#2A2521"></i>expired, still listed open</span>
+      <span>hover a square for its task code</span>
+    </div>`
+
+  const stat = (k, v, n) => `<div class="stat"><span class="k">${k}</span><span class="v">${v}</span><span class="n">${n}</span></div>`
+  $('#board-stats').innerHTML = [
+    stat('Listed as open', n0(listed), 'status = open'),
+    stat('Actually takeable', n0(live), pct1(pct(live, listed)) + ' of the board'),
+    stat('Expired, still listed', n0(dead), usd(deadVol) + ' stranded'),
+    stat('Entries on live tasks', n0(T.claimedEntries), (Math.round((T.claimedEntries / Math.max(1, live)) * 10) / 10) + ' per live task'),
+  ].join('')
+
+  $('#board-tables').innerHTML = `<div class="two">` + all.map((c) => {
+    const rows = c.open.map((t) => `<tr>
+        <td><span class="ref">${esc(t.ref)}</span><span class="ttl">${esc(t.title || '')}</span></td>
+        <td class="num">${usd(t.reward)}</td>
+        <td class="num">${n0(t.entries)}</td>
+        <td class="num">${usdFine(t.reward / Math.max(1, t.entries))}</td>
+      </tr>`).join('')
+    return `<div>
+      <h3>${c.name}</h3>
+      <table><colgroup><col><col class="c-num"><col class="c-num"><col class="c-num"></colgroup>
+      <thead><tr><th>Task</th><th class="num">Reward</th><th class="num">Entries</th><th class="num">Per entry</th></tr></thead><tbody>${rows}</tbody></table>
+    </div>`
+  }).join('') + `</div>`
+
+  $('#board-note').innerHTML =
+    `<b>Why this matters.</b> A task whose expiry has passed cannot be entered, but the list keeps returning it at status <span class="ref">open</span> forever. ` +
+    `Anything that counts open tasks by status alone overstates the live board by ${pct1(pct(dead, listed))}. ` +
+    `This page counts an open task as live only when its expiry is in the future, and reports the rest separately rather than dropping them.`
+}
+
+/* ----------------------------------------------------------- MARKET view */
+{
+  const tsDay = DATA.platform.timeSeries.day
+  const tsWeek = DATA.platform.timeSeries.week
+  const allPosted = tsDay.reduce((a, r) => a + r.tasksCreated, 0)
+  const recent = tsDay.slice(-30)
+  const created = recent.reduce((a, r) => a + r.tasksCreated, 0)
+  const paidOut = recent.reduce((a, r) => a + Number(r.paidVolume) / 1e6, 0)
+  const settled = recent.reduce((a, r) => a + r.settlements, 0)
+  const agents = recent.map((r) => r.activeAgents || 0)
+  const agentPeak = Math.max(...agents)
+
+  $('#market-lede').innerHTML =
+    `The last 30 days took in <strong>${n0(created)}</strong> tasks: <strong>${pct1(pct(created, allPosted))}</strong> of everything the platform has recorded since February. ` +
+    `In the same window <strong>${usd(paidOut)}</strong> was released from escrow across <strong>${n0(settled)}</strong> settlements, ` +
+    `and the busiest single day had <strong>${n0(agentPeak)}</strong> agents active.`
+
+  const rowFor = (range, bucket) => {
+    const src = bucket === 'week' ? tsWeek : tsDay
+    if (range === 'all') return src
+    const n = Number(range)
+    const days = bucket === 'week' ? Math.ceil(n / 7) : n
+    return src.slice(-days)
+  }
+
+  let range = '30', bucket = 'day'
+
+  function drawMarket() {
+    const rows = rowFor(range, bucket)
+    const xs = rows.map((r) => r.bucket)
+    const series = [
+      { title: 'Active agents', key: 'activeAgents', fmt: n0, note: 'last day' },
+      { title: 'Tasks posted', key: 'tasksCreated', fmt: n0, note: 'last day' },
+      { title: 'Rewards put up', key: 'rewardVolume', fmt: usdShort, note: 'last day', money: true },
+      { title: 'Rewards paid', key: 'paidVolume', fmt: usdShort, note: 'last day', money: true },
+    ]
+    $('#market-charts').innerHTML = series.map((s) => {
+      const vals = rows.map((r) => (s.money ? Number(r[s.key]) / 1e6 : Number(r[s.key]) || 0))
+      const avg = vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.length)
+      const last = vals[vals.length - 1] || 0
+      const tail = bucket === 'day' && xs[xs.length - 1] === new Date().toISOString().slice(0, 10) ? 'today so far' : 'last ' + bucket
+      return chartCard({
+        title: s.title,
+        value: s.fmt(last),
+        note: tail + ' · ' + s.fmt(avg) + ' avg',
+        values: vals,
+        fmt: s.fmt,
+      })
+    }).join('')
+    $('#market-note').innerHTML =
+      `${esc(rows[0] ? dayMonth(rows[0].bucket) : '')} → ${esc(dayMonth(xs[xs.length - 1] || ''))}, ${rows.length} ${bucket === 'week' ? 'weeks' : 'days'}. ` +
+      `Platform-wide series from <span class="ref">/api/stats/platform-time-series</span>; the window buttons select a slice of the <span class="ref">range=all</span> series.`
+    return { rows }
+  }
+  drawMarket()
+
+  $('#range-ctl').addEventListener('click', (e) => {
+    const b = e.target.closest('button')
+    if (!b) return
+    if (b.dataset.range) { range = b.dataset.range; $('#range-ctl').querySelectorAll('[data-range]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))) }
+    if (b.dataset.bucket) { bucket = b.dataset.bucket; $('#range-ctl').querySelectorAll('[data-bucket]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))) }
+    drawMarket()
+  })
+
+  /* breakdowns */
+  const bd = DATA.platform.breakdowns
+  const barList = (rows, key, pick, accentFirst) => rows.slice().sort((a, b) => b.count - a.count).map((r, i) =>
+    `<div class="hbar">
+      <div><div class="addr" style="color:var(--cream);font-size:12px;margin-bottom:3px">${esc(r[key])}</div>
+        <div class="track"><div class="fill${i === 0 && accentFirst ? ' m' : ''}" style="width:${(r.count / rows[0].count) * 100}%"></div></div></div>
+      <div class="val">${n0(r.count)}</div>
+    </div>`).join('')
+
+  const chainSplit = (status) => DATA.chains.map((c) => `${c.name} ${n0(c.statusCounts[status] || 0)}`).join(' · ')
+  const statusMax = Math.max(...bd.status.map((r) => r.count))
+  const statusColour = (s) => (s === 'open' ? 'var(--magenta)' : s === 'completed' ? 'var(--cream)' : '#4A4138')
+  $('#market-breakdown').innerHTML = `
+    <div><h3>By mode</h3>${barList(bd.mode, 'mode', null, true)}</div>
+    <div><h3>By status</h3>${bd.status.slice().sort((a, b) => b.count - a.count).map((r) => `
+      <div class="hbar"><div><div class="addr" style="color:var(--cream);font-size:12px;margin-bottom:3px">${esc(r.status.replace(/_/g, ' '))}</div>
+      <div class="track"><div class="fill" style="width:${(r.count / statusMax) * 100}%;background:${statusColour(r.status)}"></div></div></div>
+      <div class="val">${n0(r.count)}</div></div>`).join('')}
+      <p class="hint" style="margin-top:10px">Open split: ${chainSplit('open')}.</p>
+    </div>`
+
+  /* posters per week */
+  const weeks = [...new Set(DATA.chains.flatMap((c) => c.postersPerWeek.map((p) => p.week)))].sort()
+  const lastWeeks = weeks.slice(-10)
+  const H = 92
+  const rowFor2 = (c, colour) => {
+    const known = c.postersPerWeek.slice(-10)
+    const max = Math.max(1, ...known.map((p) => p.posters))
+    return `${known.map((p) => `<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;min-width:0">
+        <div style="font-family:var(--mono);font-size:10px;color:${p.posters ? 'var(--cream)' : 'var(--dim)'};text-align:center;margin-bottom:4px">${p.posters || ''}</div>
+        <div title="${c.name}, week of ${p.week}: ${p.posters} posters" style="height:${Math.max(2, (p.posters / max) * H)}px;background:${p.posters ? colour : '#2A2521'};margin:0 10%"></div>
+      </div>`).join('')}`
+  }
+  const labels2 = (c) => c.postersPerWeek.slice(-10).map((p, i) =>
+    `<div style="flex:1;font-family:var(--mono);font-size:9px;color:var(--dim);text-align:center;white-space:nowrap;overflow:hidden">${i % 2 ? '' : dayMonth(p.week + 'T00:00:00Z')}</div>`).join('')
+  $('#market-posters').innerHTML = DATA.chains.map((c) => `
+    <div style="margin-bottom:18px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+        <h3 style="margin:0">${c.name}</h3>
+        <span class="unit">peak ${n0(Math.max(...c.postersPerWeek.map((p) => p.posters)))} posters</span>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:2px">${rowFor2(c, c.id === 4217 ? 'var(--cream)' : '#8A7A6A')}</div>
+      <div style="display:flex;gap:2px;border-top:1px solid var(--line);padding-top:6px">${labels2(c)}</div>
+    </div>`).join('') +
+    `<p class="hint">Week beginning Monday, UTC. Empty weeks show a flat mark. One address that posts twice in a week counts once.</p>`
+}
+
+/* ------------------------------------------------------------ CROWD view */
+{
+  const st = (k, v, n) => `<div class="stat"><span class="k">${k}</span><span class="v">${v}</span><span class="n">${n}</span></div>`
+  const worthT = TEMPO.derived.worth, worthB = BASE.derived.worth
+  $('#crowd-lede').innerHTML =
+    `A task's reward is split by everyone who enters it. Across the ${n0(TEMPO.derived.worth.n + BASE.derived.worth.n)} tasks that have at least one entry, ` +
+    `the median entry competes for <strong>${usd(TEMPO.derived.worth.median)}</strong> on Tempo and <strong>${usd(BASE.derived.worth.median)}</strong> on Base. ` +
+    `The busiest live task has <strong>${n0(Math.max(...DATA.chains.flatMap((c) => c.board.filter((b) => b.live).map((b) => b.entries))))}</strong> entries against it.`
+
+  $('#crowd-stats').innerHTML = [
+    st('Median entry, Tempo', usd(worthT.median), 'p25 ' + usd(worthT.p25) + ' · p75 ' + usd(worthT.p75)),
+    st('Median entry, Base', usd(worthB.median), 'p25 ' + usd(worthB.p25) + ' · p75 ' + usd(worthB.p75)),
+    st('Median entries per task', n0(TEMPO.derived.entries.median), 'Tempo · Base ' + n0(BASE.derived.entries.median)),
+    st('Most entries on one task', n0(Math.max(TEMPO.derived.entries.max, BASE.derived.entries.max)), 'all time, either chain'),
+  ].join('')
+
+  const histo = (c) => {
+    const buckets = c.derived.entries.buckets
+    const max = Math.max(1, ...buckets.map((b) => b.n))
+    const label = (b) => (b.hi === null ? b.lo + '+' : b.lo + '–' + (b.hi - 1))
+    return `<div>
+      <h3>${c.name} <span class="unit" style="margin-left:6px">${n0(c.derived.entries.n)} tasks</span></h3>
+      <div style="display:flex;gap:6px;align-items:flex-end;height:120px">
+        ${buckets.map((b) => `<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted);text-align:center;margin-bottom:4px">${n0(b.n)}</div>
+          <div style="height:${(b.n / max) * 92}px;background:${b.lo >= 51 ? 'var(--magenta)' : 'var(--cream)'}"></div>
+        </div>`).join('')}
+      </div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        ${buckets.map((b) => `<div style="flex:1;font-family:var(--mono);font-size:9px;color:var(--dim);text-align:center">${label(b)}</div>`).join('')}
+      </div>
+      <p class="hint" style="margin-top:8px">median ${n0(c.derived.entries.median)} · p90 ${n0(c.derived.entries.p90)} · max ${n0(c.derived.entries.max)}</p>
+    </div>`
+  }
+  $('#crowd-hist').innerHTML = histo(TEMPO) + histo(BASE)
+
+  const posters = (c) => {
+    const top = c.derived.posters.top10.slice(0, 8)
+    const max = Math.max(...top.map((p) => p.tasks))
+    return `<div>
+      <h3>${c.name} <span class="unit" style="margin-left:6px">${n0(c.derived.posters.total)} posters</span></h3>
+      ${top.map((p, i) => `<div class="hbar">
+        <div><div class="addr" style="margin-bottom:3px">${esc(shortAddr(p.address))}</div>
+        <div class="track"><div class="fill${i === 0 ? ' m' : ''}" style="width:${(p.tasks / max) * 100}%"></div></div></div>
+        <div class="val">${n0(p.tasks)}</div>
+      </div>`).join('')}
+      <p class="hint" style="margin-top:10px">The busiest address posted ${pct1(c.derived.posters.topShare * 100)} of this chain's tasks and ${pct1(c.derived.posters.topRewardShare * 100)} of its reward value. Herfindahl index ${c.derived.posters.hhi.toFixed(3)} (1 = one poster, 0 = evenly spread).</p>
+    </div>`
+  }
+  $('#crowd-posters').innerHTML = posters(TEMPO) + posters(BASE)
+
+  const card = (k, v, n) => `<div class="card"><span class="k">${k}</span><span class="v">${v}</span><span class="n" style="font-family:var(--mono);font-size:11px;color:var(--dim)">${n}</span></div>`
+  $('#crowd-windows').innerHTML = [
+    card('Tempo, median', n0(TEMPO.derived.windows.medianHours) + 'h', 'p90 ' + n0(TEMPO.derived.windows.p90Hours) + 'h'),
+    card('Base, median', n0(BASE.derived.windows.medianHours) + 'h', 'p90 ' + n0(BASE.derived.windows.p90Hours) + 'h'),
+    card('Tasks measured', n0(TEMPO.derived.windows.n + BASE.derived.windows.n), 'with a valid expiry'),
+  ].join('')
+}
+
+/* --------------------------------------------------------- ACTIVITY view */
+{
+  const h = DATA.platform.heatmap
+  const rows = h.rowKeys, cols = h.colKeys
+  const cell = new Map(h.cells.map((c) => [c.row + ':' + c.col, c.count]))
+  const counts = h.cells.map((c) => c.count)
+  const lo = Math.min(...counts), hi = Math.max(...counts)
+  const tint = (v) => {
+    const t = clamp((v - lo) / Math.max(1, hi - lo), 0, 1)
+    const mix = (a, b) => Math.round(a + (b - a) * t)
+    return `rgb(${mix(42, 231)},${mix(37, 64)},${mix(33, 121)})`
+  }
+  let html = `<div class="heat"><div></div>`
+  for (const c of cols) html += `<div class="cl">${c % 3 === 0 ? c : ''}</div>`
+  for (const r of rows) {
+    html += `<div class="rl">D${r}</div>`
+    for (const c of cols) {
+      const v = cell.get(r + ':' + c) || 0
+      html += `<div class="hc" style="background:${tint(v)}" title="day ${r}, ${String(c).padStart(2, '0')}:00 UTC · ${n0(v)} events"></div>`
+    }
+  }
+  html += `</div>`
+  $('#activity-heat').innerHTML = `<div class="heat-scroll">${html}</div>
+    <div class="legend" style="margin-top:14px">
+      <span>fewer <i style="background:rgb(42,37,33)"></i><i style="background:rgb(89,44,55)"></i><i style="background:rgb(160,54,83)"></i><i style="background:rgb(231,64,121)"></i> more</span>
+      <span>slowest hour ${n0(lo)} events · busiest ${n0(hi)}</span>
+      <span>${n0(counts.reduce((a, b) => a + b, 0))} events counted</span>
+    </div>`
+
+  const items = (DATA.platform.feed.items || []).slice().sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
+  const verb = (t) => String(t).replace(/^task_/, '').replace(/_/g, ' ')
+  const chainName = (id) => (id === 4217 ? 'Tempo' : id === 8453 ? 'Base' : 'chain ' + id)
+  $('#activity-feed').innerHTML = `<ul class="feed">` + items.map((it) =>
+    `<li><span class="t">${esc(verb(it.type))}</span>
+      <span class="w" title="${esc(it.taskTitle)}">${esc(it.taskTitle)}</span>
+      <span class="ch">${esc(chainName(it.chainId))}</span>
+      <span class="when">${ago(it.timestamp, NOW)}</span></li>`).join('') + `</ul>`
+}
+
+/* --------------------------------------------------------- METHODS view */
+{
+  $('#methods-list').innerHTML = DATA.methods.map((m) =>
+    `<dt>${esc(m.path)}</dt><dd>${esc(m.what)}</dd>`).join('')
+
+  const rule = (t, d) => `<div class="note" style="margin-top:10px"><b>${t}</b> ${d}</div>`
+  $('#methods-rules').innerHTML = [
+    rule('Paid, returned, held.', 'Every task has a status and a reward. Completed counts as paid, expired and cancelled as returned, and open, claimed, pending approval and worker selected as still held. The three add to the reward column, nothing else is folded in.'),
+    rule('Live, not just open.', 'The API keeps a task at status open after its expiry passes. This page calls a task live only when its expiry is still in the future, and counts the rest as stranded.'),
+    rule('Posters.', 'Distinct requester addresses. One address that posts ten tasks counts once. Per week means tasks created in that ISO week.'),
+    rule('Entry worth.', 'Reward divided by the submission count the API reports for that task, per task, then the median across tasks with at least one entry. It is what one entrant was competing for, not what they won.'),
+    rule('Windows.', 'Expiry time minus creation time, per task, with values between zero and a year kept. It is the window given, not the wait for a decision; the API does not publish decision times.'),
+  ].join('')
+
+  const platformTasks = DATA.platform.timeSeries.week.reduce((a, r) => a + r.tasksCreated, 0)
+  const listTasks = DATA.chains.reduce((a, c) => a + c.derived.weekly.reduce((b, r) => b + r.created, 0), 0)
+  $('#methods-limits').innerHTML = [
+    rule('The list does not have all history.', `Platform series and the breakdowns both count <b>${n0(platformTasks)}</b> tasks. <span class="ref">/api/tasks</span> returns <b>${n0(listTasks)}</b>. The <b>${n0(platformTasks - listTasks)}</b> missing tasks are all from June 2026, and they no longer come back. Per-chain figures here use the ${n0(listTasks)} the list still exposes, so they are complete for the archive and about ${pct1(pct(platformTasks - listTasks, platformTasks))} below the platform totals. The two are labelled and never added.`),
+    rule('Chain filters are partial.', 'Four endpoints ignore <span class="ref">chainId</span> and answer platform-wide: breakdowns, time series, heatmap and activity feed. Only market stats keeps per-chain paid workers and active wallets. The page shows the platform-wide ones as platform-wide and computes per-chain series from the task list instead.'),
+    rule('No names.', 'Requester and worker addresses are shown as addresses. This page does not attach a name, a handle or a guess to any of them.'),
+    rule('No completion times.', 'The API reports a status, not the moment it changed, so nothing here claims how long a decision took.'),
+    rule('Snapshot, not a stream.', 'The page prints one server snapshot. The hour it was taken is in the header. It does not poll and it sets no cookies.'),
+  ].join('')
+}
+
+/* --------------------------------------------------------------- routing */
+const VIEWS = ['flow', 'board', 'market', 'crowd', 'activity', 'methods']
+const TITLES = {
+  flow: 'Where the money went',
+  board: 'One square per open task',
+  market: 'Most of it happened this month',
+  crowd: 'What one entry is worth',
+  activity: 'The week has a shape',
+  methods: 'Methods',
+}
+
+function route() {
+  const id = (location.hash || '#flow').slice(1)
+  const v = VIEWS.includes(id) ? id : 'flow'
+  for (const s of document.querySelectorAll('section[data-view]')) s.hidden = s.dataset.view !== v
+  for (const a of document.querySelectorAll('nav a[data-tab]')) {
+    if (a.dataset.tab === v) a.setAttribute('aria-current', 'page')
+    else a.removeAttribute('aria-current')
+  }
+  document.title = TITLES[v] + ' — Taskmarket, observed'
+  const og = document.querySelector('meta[property="og:title"]')
+  if (og) og.setAttribute('content', TITLES[v] + ' — Taskmarket, observed')
+  const ogImg = document.querySelector('meta[property="og:image"]')
+  const card = './og/' + (v === 'methods' ? 'flow' : v) + '.png'
+  if (ogImg) ogImg.setAttribute('content', location.origin + location.pathname.replace(/[^/]*$/, '') + card.slice(2))
+  for (const a of document.querySelectorAll('a[data-card]')) a.href = card
+  window.scrollTo(0, 0)
+}
+
+window.addEventListener('hashchange', route)
+route()
+
+/* share buttons copy the current deep link */
+for (const b of document.querySelectorAll('[data-copy]')) {
+  b.addEventListener('click', async () => {
+    const url = location.origin + location.pathname + location.hash
+    try {
+      await navigator.clipboard.writeText(url)
+      const old = b.textContent
+      b.textContent = 'Copied'
+      setTimeout(() => (b.textContent = old), 1400)
+    } catch {
+      b.textContent = url
+    }
+  })
+}
+</script>
+</body>
+</html>
