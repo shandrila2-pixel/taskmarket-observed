@@ -39,10 +39,12 @@ Two source families, deliberately kept apart:
    reader can reproduce them.
 
 The two families do not agree on the total task count, and the page says so
-rather than adding them together: the platform series counts 1,655 tasks while
-`/api/tasks` returns 1,508 for the same chains. The gap is almost entirely June
-2026, a month the task list barely retains. Treat the per-task figures as a
-floor, not the whole market.
+rather than adding them together: in the snapshot this was built from (24
+November 2026) the platform series counted 1,655 tasks while `/api/tasks`
+returned 1,508 for the same chains. The gap is almost entirely June 2026, a
+month the task list barely retains. Treat the per-task figures as a floor, not
+the whole market. The Methods view recomputes both numbers from the live
+snapshot, so it always states the current gap rather than this one.
 
 ### Definitions that are not obvious
 

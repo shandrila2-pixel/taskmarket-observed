@@ -56,9 +56,9 @@ if the headline numbers moved.
 
 Known limits (also printed in the Methods view)
 -----------------------------------------------
-- Platform series count 1,655 tasks; /api/tasks returns 1,508. The gap is
-  almost all June 2026. The page calls the per-task set a floor and never adds
-  the two together.
+- Platform series count 1,655 tasks; /api/tasks returns 1,508 (24 Nov 2026
+  snapshot). The gap is almost all June 2026. The page calls the per-task set a
+  floor and never adds the two together.
 - The heatmap's 0-6 day rows are the API's own index; the site never labels
   them Monday-Sunday because the mapping is not documented.
 - Expired tasks keep status "open" in the API. They are counted as stale, not
